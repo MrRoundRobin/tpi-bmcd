@@ -40,6 +40,7 @@ use app::{bmc_application::BmcApplication, event_application::run_event_listener
 use clap::{command, value_parser, Arg};
 use config::Log;
 use futures::future::join_all;
+use nix::NixPath;
 use openssl::{
     pkey::{PKey, Private},
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod},
@@ -179,9 +180,12 @@ fn config_path() -> PathBuf {
 fn load_keys_from_pem<P: AsRef<Path>>(
     private_key: P,
     certificate: P,
-) -> anyhow::Result<(PKey<Private>, X509)> {
+    chain: P,
+) -> anyhow::Result<(PKey<Private>, X509, Option<X509>)> {
     let mut pkey = Vec::new();
     let mut cert = Vec::new();
+    let mut cert_chain = Vec::new();
+
     OpenOptions::new()
         .read(true)
         .open(private_key)
@@ -193,15 +197,33 @@ fn load_keys_from_pem<P: AsRef<Path>>(
         .context("could not open cert file")?
         .read_to_end(&mut cert)?;
 
+    let mut certificate_chain = None;
+
+    if !chain.as_ref().is_empty() {
+        OpenOptions::new()
+            .read(true)
+            .open(chain)
+            .context("could not open chain file")?
+            .read_to_end(&mut cert_chain)?;
+        certificate_chain = Some(X509::from_pem(&cert_chain)?);
+    }
+
     let rsa_key = PKey::private_key_from_pem(&pkey)?;
     let x509 = X509::from_pem(&cert)?;
-    Ok((rsa_key, x509))
+
+    Ok((rsa_key, x509, certificate_chain))
 }
 
 fn load_tls_config(config: &Config) -> anyhow::Result<SslAcceptorBuilder> {
-    let (private_key, cert) = load_keys_from_pem(&config.tls.private_key, &config.tls.certificate)?;
+    let (private_key, cert, chain) = load_keys_from_pem(&config.tls.private_key, &config.tls.certificate, &config.tls.chain)?;
     let mut tls = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
     tls.set_private_key(&private_key)?;
     tls.set_certificate(&cert)?;
+
+    match chain {
+        Some(chain) => tls.add_extra_chain_cert(chain)?,
+        None => (),
+    }
+
     Ok(tls)
 }

@@ -51,6 +51,7 @@ pub struct Authentication {
 #[derive(Debug, Deserialize)]
 pub struct Tls {
     pub private_key: PathBuf,
+    pub chain: PathBuf,
     pub certificate: PathBuf,
 }
 

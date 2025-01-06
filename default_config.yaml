@@ -27,6 +27,7 @@ authentication:
   token_expires: 10800
 tls:
   certificate: /etc/ssl/certs/bmcd_cert.pem
+  chain: ""
   private_key: /etc/ssl/certs/bmcd_key.pem
 log:
   # send logging to std out
